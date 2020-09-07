@@ -206,9 +206,15 @@ class Warehouse:
         return hash(self.worker) ^ functools.reduce(operator.xor, [hash(box) for box in self.boxes])
     
 if __name__ == "__main__":
+
+
     wh = Warehouse()
     wh.load_warehouse("./warehouses/warehouse_03.txt")
-    print(wh)   # this calls    wh.__str__()
+
+
+    # wh.extract_locations(str(wh).splitlines())
+    print(wh)
+       # this calls    wh.__str__()
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + 
 #                              CODE CEMETARY
 # + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + +

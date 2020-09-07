@@ -29,13 +29,12 @@ Last modified by 2020-08-09  by f.maire@qut.edu.au
 # You have to make sure that your code works with 
 # the files provided (search.py and sokoban.py) as your code will be tested 
 # with these files
-import search 
+import search
 import sokoban
 import numpy as np
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
 
 def my_team():
     '''
@@ -48,6 +47,20 @@ def my_team():
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+movement=[(1,0),(-1,0),(0,1),(0,-1)]
+
+def manhattan_distance(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+def direction(move):
+    if move == (1,0):
+        return 'Right'
+    if move == (-1,0):
+        return "Left"
+    if move == (0,1):
+        return 'Down'
+    if move == (0,-1):
+        return 'Up'
 
 def taboo_cells(warehouse):
     '''  
@@ -73,35 +86,37 @@ def taboo_cells(warehouse):
        The returned string should NOT have marks for the worker, the targets,
        and the boxes.  
     '''
-    ##         "INSERT YOUR CODE HERE"   
+    ##         "INSERT YOUR CODE HERE"
     corners=[]
-    a=sokoban.Warehouse()
-    a.load_warehouse(warehouse)
-    zero=np.empty([a.nrows,a.ncols],dtype='str')
-    wall=a.walls
+    target=[]
+    warehouse=warehouse.splitlines()
+    nrows=len(warehouse)
+    ncols=len(warehouse[0])
+
     # print(zero)
-    zero[:][:]=' '
-    for col,row in wall:
-        zero[row][col]='#'
-    # print(zero)              
-    for i in range(1,a.nrows-1):
-        for j in range(1,a.ncols-1):
-            if(zero[i][j]==" "):
+    # zero[:][:]=' '
+    # for col,row in wall:
+    #     zero[row][col]='#'
+    # print(zero)
 
+    for i in range(1,nrows-1):
+        for j in range(1,ncols-1):
+            if(warehouse[i][j]==' ' or warehouse[i][j]=='@'):
                 if(
-                    (zero[i][j-1]=='#' and (zero[i-1][j]=='#' or zero[i+1][j]=='#')) 
+                    (warehouse[i][j-1]=='#' and (warehouse[i-1][j]=='#' or warehouse[i+1][j]=='#'))
                     or
-                    (zero[i][j+1]=='#' and (zero[i-1][j]=='#' or zero[i+1][j]=='#'))):
-                    corners.append((i,j))
-                    if((i,j) not in a.targets):
-                        zero[i][j]='X'
-                        
-    for i in range(len(corners)):
+                    (warehouse[i][j+1]=='#' and (warehouse[i-1][j]=='#' or warehouse[i+1][j]=='#'))):
+                    corners.append((j,i))
+                    line = warehouse[i]
+                    warehouse[i] = line[:j]+"X"+line[j+1:]
 
-    res="\n".join(["".join(line) for line in zero])
-    print(corners)
-    return res
-    # raise NotImplementedError()
+
+
+
+    warehouse="\n".join(["".join(line) for line in warehouse])
+
+
+    return warehouse
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -129,8 +144,11 @@ class SokobanPuzzle(search.Problem):
     #     You are allowed (and encouraged) to use auxiliary functions and classes
 
     
-    def __init__(self, warehouse):
-        raise NotImplementedError()
+    def __init__(self, initial,goal):
+
+        self.initial = initial
+        self.goal = goal.replace('@', ' ')
+        self.cost= 1
 
     def actions(self, state):
         """
@@ -140,9 +158,110 @@ class SokobanPuzzle(search.Problem):
         'self.allow_taboo_push' and 'self.macro' should be tested to determine
         what type of list of actions is to be returned.
         """
-        raise NotImplementedError
+        warehouse = sokoban.Warehouse()
+        warehouse.extract_locations(state.splitlines())
+        # print(warehouse)
+        # print(state)
+        taboo = set(sokoban.find_2D_iterator(taboo_cells(str(warehouse)).splitlines(),"X"))
+        for box in warehouse.boxes:
+            for move in movement:
+                worker_position = (box[0]-move[0],box[1]-move[1])
+                box_after_pushed = (box[0]+move[0],box[1]+move[1])
+                # print(taboo)
+                if( can_go_there(warehouse,worker_position)
+                    and box_after_pushed not in taboo
+                    and box_after_pushed not in warehouse.walls
+                    and box_after_pushed not in warehouse.boxes
+                ):
+                    yield (box,direction(move))
+
+
+
+
+    def result(self, state, action):
+
+        warehouse = sokoban.Warehouse()
+        warehouse.extract_locations(state.splitlines())
+        # print(action)
+
+        box_position = action[0]
+        action = action[1]
+
+        box_id=warehouse.boxes.index(box_position)
+        warehouse.boxes.remove(box_position)
+        if action == 'Right':
+            move = movement[0]
+            new_box_position = (box_position[0]+move[0],box_position[1]+move[1])
+
+        if action == "Left":
+            move = movement[1]
+            new_box_position = (box_position[0]+move[0],box_position[1]+move[1])
+
+        if action == 'Down':
+            move = movement[2]
+            new_box_position = (box_position[0]+move[0],box_position[1]+move[1])
+
+        if action == 'Up':
+            move = movement[3]
+            new_box_position = (box_position[0]+move[0], box_position[1]+move[1])
+
+        warehouse.worker = box_position
+
+        warehouse.boxes.insert(box_id, new_box_position)
+        # print(str(warehouse))
+        return str(warehouse)
+
+    def goal_test(self, state):
+        return state.replace('@', ' ') == self.goal
+
+    def h(self,n):
+        # print(node)
+        # print(' ')
+        # print(self.initial)
+        h=0
+
+        wh=sokoban.Warehouse()
+        wh.extract_locations(n.state.splitlines())
+        # print(wh.boxes)
+        # print(wh.boxes)
+        # print(n.state)
+        for target in wh.targets:
+            for box in wh.boxes:
+                # print(box)
+                h=manhattan_distance(box,target)+h
+        return h
+
+    def path_cost(self, c, state1, action, state2):
+
+        # print(s)
+        return c+1
+
+
+    def value(self, state):
+        return 1
+
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+def Draw_Org_Map(warehouse):
+    wh = str(warehouse).splitlines()
+
+    rows = len(wh)
+    cols = len(wh[0])
+    map = [[' ' for j in range(cols)] for i in range(rows)]
+    for wall in warehouse.walls:
+        wall_col, wall_row = wall
+        map[wall_row][wall_col] = '#'
+
+    for target in warehouse.targets:
+        target_col, target_row = target
+        map[target_row][target_col] = '.'
+
+
+    return map
+
 
 def check_elem_action_seq(warehouse, action_seq):
     '''
@@ -169,8 +288,65 @@ def check_elem_action_seq(warehouse, action_seq):
     '''
     
     ##         "INSERT YOUR CODE HERE"
-    
-    raise NotImplementedError()
+
+    coll={
+        'Left':   (-1,0),
+        'Right':   (1,0),
+        'Up':   (0,-1),
+        'Down':   (0,1)
+    }
+    worker_position = warehouse.worker
+    map_array=Draw_Org_Map(warehouse)
+
+    for action in action_seq:
+        move = coll[action]
+        # print(worker_position)
+        # print(move)
+        if action=='Left':
+            worker_position = (worker_position[0]+move[0],worker_position[1]+move[1])
+
+        elif action == 'Right':
+            worker_position = (worker_position[0]+move[0],worker_position[1]+move[1])
+
+        elif action == 'Up':
+            worker_position = (worker_position[0]+move[0],worker_position[1]+move[1])
+
+        elif action == 'Down':
+            worker_position = (worker_position[0]+move[0],worker_position[1]+move[1])
+
+        if worker_position in warehouse.walls:
+            return 'invaild action'
+
+        if worker_position in warehouse.boxes:
+
+            # print(worker_position)
+            box_id = warehouse.boxes.index(worker_position)
+
+            box_new_position = (warehouse.boxes[box_id][0]+move[0],warehouse.boxes[box_id][1]+move[1])
+
+            if box_new_position in warehouse.boxes or box_new_position in warehouse.walls:
+                return 'invaild action'
+            else:
+                warehouse.boxes.remove(worker_position)
+                warehouse.boxes.insert(box_id,box_new_position)
+
+        # print(worker_position)
+
+    if (worker_position in warehouse.targets):
+        map_array[worker_position[1]][worker_position[0]] = '!'
+    else:
+        map_array[worker_position[1]][worker_position[0]] = '@'
+
+    for box in warehouse.boxes:
+        if box in warehouse.targets:
+            map_array[box[1]][box[0]]='*'
+        else:
+            map_array[box[1]][box[0]]='$'
+
+    new_warehouse = "\n".join(["".join(line) for line in map_array])
+    # print(new_warehouse)
+    return new_warehouse
+    # raise NotImplementedError()
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -193,8 +369,93 @@ def solve_sokoban_elem(warehouse):
     '''
     
     ##         "INSERT YOUR CODE HERE"
-    
-    raise NotImplementedError()
+    macros = solve_sokoban_macro(warehouse)
+
+    def WorkerGoal(box,direction):
+        # print(direction)
+        if direction == 'Right':
+            move = (-1,0)
+        if direction == "Left":
+            move = (1,0)
+        if direction == 'Down':
+            move = (0,-1)
+        if direction == 'Up':
+            move = (0,1)
+        return (box[0]+move[0],box[1]+move[1])
+
+
+    if macros == 'Impossible' :
+        return macros
+    elif macros is None:
+        return 'impossible'
+
+
+    worker_movement = []
+    # print(macros)
+    for macro in macros[1:]:
+
+        box = macro[0]
+        direction = macro[1]
+        # print(direction)
+        worker_goal = WorkerGoal(box,direction)
+
+
+        def heuristic(position):
+            state = position.state
+            # print(state,'111')
+            res = manhattan_distance(state, worker_goal)
+            return res
+
+        nodes = search.astar_graph_search(WorkerPath(warehouse.worker,warehouse,worker_goal),heuristic)
+
+
+        if nodes is None:
+            return 'Impossible'
+
+        # print(nodes.path())
+
+        for node in nodes.path()[1:]:
+            if node.action == (1, 0):
+                move = "Right"
+            elif node.action == (-1,0):
+                move = "Left"
+            elif node.action == (0, 1):
+                move = "Down"
+            elif node.action == (0, -1):
+                move = "Up"
+            worker_movement.append(move)
+
+        if macro[1] == 'Left':
+            base = (-1,0)
+        elif macro[1] == 'Right':
+            base = (1,0)
+        elif macro[1] == 'Up':
+            base = (0,-1)
+        elif macro[1] == 'Down':
+            base = (0,1)
+
+        worker_old_position = nodes.state
+
+        box_be_pushed = (worker_old_position[0]+base[0],worker_old_position[1]+base[1])
+        box_id = warehouse.boxes.index(box_be_pushed)
+        warehouse.boxes.remove(box_be_pushed)
+        box_new_position= (box_be_pushed[0]+base[0], box_be_pushed[1]+base[1])
+        warehouse.boxes.insert(box_id,box_new_position)
+        warehouse.worker = box_be_pushed
+
+        # print(nodes.state, 'state')
+        # print(macro,'action')
+        #
+        # print(warehouse.worker,'woker')
+        # print(warehouse.boxes,'box')
+
+
+        worker_movement.append(direction)
+        # print(worker_movement)
+
+        # print(worker_movement)
+    return worker_movement
+    # raise NotImplementedError()
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -211,7 +472,21 @@ def can_go_there(warehouse, dst):
     '''
     
     ##         "INSERT YOUR CODE HERE"
-    
+
+
+    # def heuristic(position):
+    #     state=position.state
+    #     # print(state,'111')
+    #     return manhattan_distance(state,dst)
+
+    node = search.astar_graph_search(WorkerPath(warehouse.worker,warehouse,dst))
+
+    if node is not None:
+        return True
+    else:
+        return False
+
+
     raise NotImplementedError()
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -241,7 +516,38 @@ def solve_sokoban_macro(warehouse):
     '''
     
     ##         "INSERT YOUR CODE HERE"
-    
+    str_warehouse = str(warehouse)
+    goal = str_warehouse.replace("$", " ").replace(".", "*")
+
+    # def heuristic(node):
+    #     # print(node)
+    #     # print(' ')
+    #     h=0
+    #     warehouse=sokoban.Warehouse()
+    #     warehouse.extract_locations(node.state.splitlines())
+    #     for target in warehouse.targets:
+    #         for box in warehouse.boxes:
+    #             h=manhattan_distance(box,target)+h
+    #     return h
+
+    macros=search.astar_graph_search(SokobanPuzzle(str_warehouse,goal))
+    # print(M.path())
+
+
+    if macros is None or macros=='Impossible':
+        return str('Impossible')
+
+    elif macros.path()[-1] == str_warehouse :
+        return []
+
+
+    else:
+        actions_list = [node.action for node in macros.path()]
+        # print(actions_list)
+        return actions_list
+
+
+
     raise NotImplementedError()
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -272,11 +578,262 @@ def solve_weighted_sokoban_elem(warehouse, push_costs):
             For example, ['Left', 'Down', Down','Right', 'Up', 'Down']
             If the puzzle is already in a goal state, simply return []
     '''
-    
-    raise NotImplementedError()
+    macros = solve_sokoban_macro_weight(warehouse,push_costs)
+
+    def WorkerGoal(box, direction):
+        # print(direction)
+        if direction == 'Right':
+            move = (-1, 0)
+        if direction == "Left":
+            move = (1, 0)
+        if direction == 'Down':
+            move = (0, -1)
+        if direction == 'Up':
+            move = (0, 1)
+        return (box[0] + move[0], box[1] + move[1])
+
+    if macros == 'Impossible' or macros is None:
+        return 'Improssible'
+
+    elif macros.path()[-1] == str(warehouse):
+        return []
+
+
+
+    worker_movement = []
+    # print(macros)
+
+    for macro in macros[1:]:
+
+        box = macro[0]
+        direction = macro[1]
+        # print(direction)
+        worker_goal = WorkerGoal(box, direction)
+
+        def heuristic(position):
+            state = position.state
+            # print(state,'111')
+            res = manhattan_distance(state, worker_goal)
+            return res
+
+        nodes = search.astar_graph_search(WorkerPath(warehouse.worker, warehouse, worker_goal), heuristic)
+
+        if nodes is None:
+            return 'Impossible'
+
+        # print(nodes.path())
+
+        for node in nodes.path()[1:]:
+            if node.action == (1, 0):
+                move = "Right"
+            elif node.action == (-1, 0):
+                move = "Left"
+            elif node.action == (0, 1):
+                move = "Down"
+            elif node.action == (0, -1):
+                move = "Up"
+            worker_movement.append(move)
+
+        if macro[1] == 'Left':
+            base = (-1, 0)
+        elif macro[1] == 'Right':
+            base = (1, 0)
+        elif macro[1] == 'Up':
+            base = (0, -1)
+        elif macro[1] == 'Down':
+            base = (0, 1)
+
+        worker_old_position = nodes.state
+
+        box_be_pushed = (worker_old_position[0] + base[0], worker_old_position[1] + base[1])
+        box_id = warehouse.boxes.index(box_be_pushed)
+        warehouse.boxes.remove(box_be_pushed)
+        box_new_position = (box_be_pushed[0] + base[0], box_be_pushed[1] + base[1])
+        warehouse.boxes.insert(box_id, box_new_position)
+        warehouse.worker = box_be_pushed
+
+        # print(nodes.state, 'state')
+        # print(macro,'action')
+        #
+        # print(warehouse.worker,'woker')
+        # print(warehouse.boxes,'box')
+
+        worker_movement.append(direction)
+    return worker_movement
+
+def solve_sokoban_macro_weight(warehouse,push_costs):
+
+    str_warehouse = str(warehouse)
+    goal = str_warehouse.replace("$", " ").replace(".", "*")
+
+    macros = search.astar_graph_search(Weighted_sokoban(str_warehouse, goal,push_costs))
+
+    if macros is None:
+        return str('Impossible')
+    elif macros.path()[-1] == str_warehouse:
+
+        return []
+
+    else:
+        actions_list = [node.action for node in macros.path()]
+
+        return actions_list
+
+
+
+class WorkerPath(search.Problem):
+
+    def __init__(self,initial,warehouse,goal=None):
+        self.initial=initial
+        self.warehouse=warehouse
+        self.goal=goal
+
+    def actions(self, state):
+        # print(state)
+        for move in movement:
+            new_position=(state[0]+move[0],state[1]+move[1])
+            if ((new_position not in self.warehouse.walls) and (new_position not in self.warehouse.boxes) ):
+                yield move
+
+    def result(self, state, action):
+        # print(action)
+        new_position = (state[0] + action[0], state[1] + action[1])
+        # print(new_position)
+        return new_position
+
+    def h(self,n):
+        # wh=sokoban.Warehouse()
+        # wh.extract_locations(n.state)
+        # print(n.state,self.goal)
+        h=manhattan_distance(n.state,self.goal)
+        # print(self.goal)
+        return h
+
+    def value(self, state):
+        return 1
+
+class Weighted_sokoban(search.Problem):
+
+    def __init__(self, initial, goal,push_cost):
+
+        self.initial = initial
+        self.goal = goal.replace('@', ' ')
+        self.push_cost = push_cost
+        wh=sokoban.Warehouse()
+        wh.extract_locations(initial.splitlines())
+        self.initial_box =wh.boxes
+        self.targets = wh.targets
+        self.coll ={
+            'Left':   (-1,0),
+            'Right':   (1,0),
+            'Up':   (0,-1),
+            'Down':   (0,1)
+        }
+        self.box_push_cost = 0
+    def actions(self, state):
+
+        warehouse = sokoban.Warehouse()
+        warehouse.extract_locations(state.splitlines())
+        taboo = set(sokoban.find_2D_iterator(taboo_cells(str(warehouse)), "X"))
+        for box in warehouse.boxes:
+            for move in movement:
+                worker_position = (box[0] - move[0], box[1] - move[1])
+                box_after_pushed = (box[0] + move[0], box[1] + move[1])
+
+                if (can_go_there(warehouse, worker_position)
+                        and box_after_pushed not in taboo
+                        and box_after_pushed not in warehouse.walls
+                        and box_after_pushed not in warehouse.boxes
+                ):
+                    yield (box, direction(move))
+
+    def result(self, state, action):
+
+        warehouse = sokoban.Warehouse()
+        warehouse.extract_locations(state.splitlines())
+
+
+        box_position = action[0]
+        action = action[1]
+
+        box_id = warehouse.boxes.index(box_position)
+        warehouse.boxes.remove(box_position)
+        if action == 'Right':
+            move = movement[0]
+            new_box_position = (box_position[0] + move[0], box_position[1] + move[1])
+
+        if action == "Left":
+            move = movement[1]
+            new_box_position = (box_position[0] + move[0], box_position[1] + move[1])
+
+        if action == 'Down':
+            move = movement[2]
+            new_box_position = (box_position[0] + move[0], box_position[1] + move[1])
+
+        if action == 'Up':
+            move = movement[3]
+            new_box_position = (box_position[0] + move[0], box_position[1] + move[1])
+
+        warehouse.worker = box_position
+
+        warehouse.boxes.insert(box_id, new_box_position)
+        # print(str(warehouse))
+        return str(warehouse)
+
+    def goal_test(self, state):
+        return state.replace('@', ' ') == self.goal
+
+    # def path_cost(self, c, state1, action, state2):
+
+    def path_cost(self, c, state1, action, state2):
+
+
+        if(action[0] in self.initial_box):
+            ith_box=self.initial_box.index(action[0])
+            box_position = action[0]
+            base=self.coll[action[1]]
+            box_new_position=(box_position[0]+base[0],box_position[1]+base[1])
+            self.initial_box.remove(box_position)
+            self.initial_box.insert(ith_box,box_new_position)
+            self.box_push_cost = self.push_cost[ith_box]
+
+        return c+ self.box_push_cost
+
+
+
+
+    def h(self, n):
+
+        h = 0
+        wh = sokoban.Warehouse()
+        self.initial_box
+
+
+        # print(wh.boxes)
+        for target in self.targets:
+            for box in self.initial_box:
+                # print(box)
+                ith_box = self.initial_box.index(box)
+                h = (manhattan_distance(box, target)*push_cost[ith_box]) + h
+        return h
+
+    def value(self, state):
+        return 1
 
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 if __name__=='__main__':
-    taboo_cells("./warehouses/warehouse_03.txt")
+    puzzle_t3 = '''
+    #######
+    #@ $ .#
+    #. $  #
+    #######'''
+    problem_file = "./warehouses/warehouse_03_impossible.txt"
+    wh = sokoban.Warehouse()
+    wh.load_warehouse(problem_file)
+    push_cost=[1,10]
+    # wh.extract_locations(puzzle_t1.split(sep='\n'))
+    print('\nElementary solution')
+    answer = solve_sokoban_elem(wh)
+    print(answer)
